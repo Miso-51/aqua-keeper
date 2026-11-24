@@ -51,6 +51,10 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 .chips{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .chip{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:.9rem;font-weight:500;color:var(--ink)}
 .chip b{color:var(--accent);font-weight:900}
+.chip.warn{background:var(--danger-soft);border-color:var(--danger);color:var(--danger);animation:blink 1s steps(2) infinite}
+.chip.warn b{color:var(--danger)}
+.fired{font-family:"Jua","Noto Sans KR",sans-serif;font-size:2.8rem;color:var(--danger);text-align:center;line-height:1.2;margin:6px 0 0}
+.fired-sub{font-family:"Jua","Noto Sans KR",sans-serif;font-size:2.2rem;letter-spacing:.12em;text-align:center;margin:0 0 14px}
 button.chip{cursor:pointer}
 .stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-bottom:12px}
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
@@ -149,6 +153,12 @@ svg.mobile .desk-only{display:none}
 .result .src{display:block;margin-top:6px;font-size:.8rem;color:var(--muted)}
 .row-end{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 .grade{font-family:"Jua",sans-serif;font-size:4rem;line-height:1;color:var(--accent)}
+.rank{display:flex;align-items:center;gap:16px;background:var(--surface-2);border-radius:16px;padding:14px 16px;margin:6px 0 4px}
+.rank .title{font-family:"Jua","Noto Sans KR",sans-serif;font-size:1.6rem;line-height:1.2}
+.rank .cmt{font-size:.9rem;color:var(--muted);margin-top:2px}
+.rank .pts{font-weight:900;font-size:1.05rem;margin-top:4px}
+.tiers{font-size:.85rem;color:var(--muted);margin:-6px 0 14px;padding-left:1.2em}
+.tiers li{margin-bottom:2px}
 .kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}
 .kpi{background:var(--surface-2);border-radius:12px;padding:10px 12px}
 .kpi span{display:block;font-size:.8rem;color:var(--muted)}
@@ -415,6 +425,16 @@ svg.mobile .desk-only{display:none}
       <li>평소에는 <b>먹이주기</b>와 <b>청소하기</b>로 상태를 관리해요. 먹이는 1분 안에 다 먹을 만큼만 줘요.</li>
       <li>경보가 울리면 <b>대응 시작</b>을 눌러 O/X(12초)·4지선다(20초) 문제를 풀고, 설명에 맞는 설비를 LSS 구조도에서 찾아 누르세요.</li>
       <li>경보를 방치하면 건강이 빠르게 떨어져요. 틀리면 감점, 건강이 0이 되면 훈련이 끝나요.</li>
+      <li>점수가 200점 이하로 떨어지면 <b>경고</b>, 0점이 되면 <b>해고(GAME OVER)</b>예요.</li>
+      <li>근무가 끝나면 점수에 따라 등급이 매겨져요.</li>
+    </ul>
+    <ul class="tiers">
+      <li>👑 S 수조 마스터 5,000점 이상</li>
+      <li>🐬 A 베테랑 아쿠아리스트 4,000점 이상</li>
+      <li>🐢 B 든든한 수조 지킴이 3,000점 이상</li>
+      <li>🐠 C 새내기 사육사 2,000점 이상</li>
+      <li>🐟 D 수습 사원 2,000점 미만</li>
+      <li>📦 F 0점이 되면… 해고</li>
     </ul>
     <div class="field">
       <label for="nameIn">이름 또는 조 이름</label>
@@ -564,7 +584,7 @@ function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random
 let S=null,soundOn=true,actx=null,curSys='sea',isMob=false;
 
 function newState(name){
-  return {running:false,paused:false,name,health:100,food:60,quality:85,oxygen:95,temp:25,level:100,score:0,sec:0,
+  return {running:false,paused:false,name,health:100,food:60,quality:85,oxygen:95,temp:25,level:100,score:0,peak:0,fired:false,warned:false,sec:0,
     active:null,curSteps:[],curSys:'sea',activeStart:0,responding:false,step:0,awaitClick:null,wrongClicks:0,nextIn:10,
     queue:shuffle(SCENARIOS.map((_,i)=>i)).slice(0,RUN_COUNT),cleanCd:0,
     st:{oxTotal:0,oxRight:0,clickTotal:0,clickFirst:0,resolved:0,times:[]},wrongs:[]};
@@ -575,7 +595,17 @@ let toastT;
 function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2800)}
 function clockStr(){const m=9*60+(S?S.sec:0);return String(Math.floor(m/60)%24).padStart(2,'0')+':'+String(m%60).padStart(2,'0')}
 function log(msg,cls){const ul=$('log');const e=ul.querySelector('.empty');if(e)e.remove();const li=document.createElement('li');if(cls)li.className=cls;li.innerHTML='<time>'+clockStr()+'</time>';li.appendChild(document.createTextNode(msg));ul.prepend(li);while(ul.children.length>40)ul.lastChild.remove()}
-function addScore(n){S.score=Math.max(0,S.score+n)}
+function addScore(n){
+  const before=S.score;
+  S.score=Math.max(0,S.score+n);
+  if(S.score>S.peak)S.peak=S.score;
+  if(n>=0||!S.running)return;
+  if(S.score===0&&S.peak>0){S.fired=true;return}
+  if(S.score<=200&&before>200){
+    toast('⚠️ 경고! 점수가 '+S.score+'점이에요. 0점이 되면 해고됩니다.');
+    log('⚠️ 경고: 점수 '+S.score+'점','danger');beep();
+  }
+}
 function hot(id){return document.querySelector('.hot[data-id="'+id+'"]')}
 function setAlert(ids,on){ids.forEach(id=>{const h=hot(id);if(h)h.classList.toggle('alert',on)})}
 function clearHints(){document.querySelectorAll('.hot.hint').forEach(h=>h.classList.remove('hint'))}
@@ -612,6 +642,8 @@ function render(){
   setBar('temp',(t-18)/14*100,t.toFixed(1)+'°C',tc);
   $('clock').textContent=clockStr();
   $('score').textContent=S.score.toLocaleString();
+  $('score').parentElement.classList.toggle('warn',S.running&&S.peak>200&&S.score<=200);
+  if(S.fired&&S.running){endGame('fired');return}
   $('remain').textContent=S.queue.length+(S.active?1:0);
   const wt=waterTop();$('water').setAttribute('y',wt);$('water').setAttribute('height',226-wt);
   const st=345+(100-S.level)*0.9;$('sumpWater').setAttribute('y',st);$('sumpWater').setAttribute('height',477-st);
@@ -795,15 +827,26 @@ function clean(){
 
 /* end */
 function endGame(ok){
+  const fired=ok==='fired';if(fired)ok=false;
+  $('score').parentElement.classList.remove('warn');
   S.running=false;clearInterval(qInt);lockSys(false);
   $('alarm').classList.remove('show');$('instr').classList.remove('show');$('stepOv').classList.remove('show');
   const s=S.st,tot=s.oxTotal+s.clickTotal,right=s.oxRight+s.clickFirst;
   const acc=tot?Math.round(right/tot*100):0;
-  const grade=!ok?'C':acc>=90?'S':acc>=75?'A':acc>=60?'B':'C';
+  const TIERS=[
+    {min:5000,g:'S',ico:'👑',t:'수조 마스터',c:'매뉴얼이 몸에 밴 진정한 마스터! 비상 상황도 당신 앞에선 평온해요.'},
+    {min:4000,g:'A',ico:'🐬',t:'베테랑 아쿠아리스트',c:'욬만한 비상 상황은 눈 감고도 처리해요. 마스터까지 한 걸음!'},
+    {min:3000,g:'B',ico:'🐢',t:'든든한 수조 지킴이',c:'기본기는 탄탄해요. 헷갈린 절차만 다시 보면 베테랑 등극!'},
+    {min:2000,g:'C',ico:'🐠',t:'새내기 사육사',c:'아직 손에 익지 않았어요. 오답 노트로 복습해 봐요.'},
+    {min:1,g:'D',ico:'🐟',t:'수습 사원',c:'물고기들이 조금 불안해해요… 매뉴얼을 다시 정독해 볼까요?'},
+    {min:0,g:'F',ico:'📦',t:'해고 통보',c:'짐을 싸서 나가주세요… 하지만 재입사는 언제나 환영이에요!'}];
+  const tier=fired?TIERS[5]:(TIERS.find(x=>S.score>=x.min&&x.g!=='F')||TIERS[4]);
+  const ti=TIERS.indexOf(tier),next=(ti>0&&tier.g!=='F')?TIERS[ti-1]:null;
+  const grade=tier.g;
   const avg=s.times.length?Math.round(s.times.reduce((x,y)=>x+y,0)/s.times.length):0;
   const c=$('endCard');
-  c.innerHTML='<p class="meta" id="endWho"></p><h1>'+(ok?'근무 완료!':'훈련 종료')+'</h1><p id="endMsg"></p>'+
-    '<div style="display:flex;align-items:center;gap:16px"><div class="grade">'+grade+'</div><div><b style="font-size:1.6rem">'+S.score.toLocaleString()+'점</b><br><span class="meta">정확도 '+acc+'%</span></div></div>'+
+  c.innerHTML='<p class="meta" id="endWho"></p>'+(fired?'<p class="fired">당신은 해고입니다.</p><p class="fired-sub">GAME OVER</p>':'<h1>'+(ok?'근무 완료!':'훈련 종료')+'</h1>')+'<p id="endMsg"></p>'+
+    '<div class="rank"><div class="grade"'+(fired?' style="color:var(--danger)"':'')+'>'+grade+'</div><div><div class="title"'+(fired?' style="color:var(--danger)"':'')+'>'+tier.ico+' '+tier.t+'</div><div class="cmt">'+tier.c+'</div><div class="pts">'+S.score.toLocaleString()+'점 · 정확도 '+acc+'%'+(next?' · <span style="color:var(--accent)">'+next.t+'까지 '+(next.min-S.score).toLocaleString()+'점</span>':'')+'</div></div></div>'+
     '<div class="kpis">'+
     '<div class="kpi"><span>해결한 비상 상황</span><b>'+s.resolved+' / '+RUN_COUNT+'</b></div>'+
     '<div class="kpi"><span>퀴즈 정답률</span><b>'+(s.oxTotal?Math.round(s.oxRight/s.oxTotal*100):0)+'% ('+s.oxRight+'/'+s.oxTotal+')</b></div>'+
@@ -812,7 +855,7 @@ function endGame(ok){
     '</div><h3>오답 노트</h3><div id="notes"></div>'+
     '<div class="row-end"><button class="btn ghost" id="toStart">처음 화면</button><button class="btn" id="againBtn">다시 하기</button></div>';
   $('endWho').textContent=(S.name||'전시수조 점검자')+' · 근무 기록';
-  $('endMsg').textContent=ok?'오늘 근무 중 발생한 비상 상황을 모두 처리했어요. 오답 노트의 매뉴얼 항목을 다시 확인해 보세요. 다시 하면 다른 상황이 나와요.':'생물 건강이 바닥나 훈련이 끝났어요. 경보가 울리면 빨리 대응을 시작할수록 피해가 줄어요.';
+  $('endMsg').textContent=fired?'점수가 0점이 되어 더 이상 수조를 맡길 수 없어요. 오답 노트로 매뉴얼을 다시 확인하고 재도전해 보세요.':ok?'오늘 근무 중 발생한 비상 상황을 모두 처리했어요. 오답 노트의 매뉴얼 항목을 다시 확인해 보세요. 다시 하면 다른 상황이 나와요.':'생물 건강이 바닥나 훈련이 끝났어요. 경보가 울리면 빨리 대응을 시작할수록 피해가 줄어요.';
   const n=$('notes');
   if(!S.wrongs.length)n.innerHTML='<p class="meta">틀린 문제가 없어요. 완벽해요!</p>';
   else S.wrongs.forEach(w=>{const d=document.createElement('div');d.className='note';const b=document.createElement('b');b.textContent='['+w.sc+'] '+w.q;const a=document.createElement('div');a.textContent=w.a;a.style.color='var(--accent)';a.style.fontWeight='700';const e=document.createElement('div');e.textContent=w.ex;const r=document.createElement('div');r.className='meta';r.style.margin='4px 0 0';r.textContent='📘 매뉴얼 '+w.src;d.append(b,a,e,r);n.appendChild(d)});
